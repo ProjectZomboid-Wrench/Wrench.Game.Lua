@@ -4,6 +4,7 @@ using Wrench;
 using Zomboid.Java;
 using Zomboid.Java.Characters;
 using Zomboid.Java.Inventory;
+using Zomboid.Lua.Umbrella;
 
 namespace Zomboid.Lua.ContextMenus;
 
@@ -19,6 +20,18 @@ internal sealed class ContextMenuRegistry
     private readonly List<InventoryMenuFiller> _inventoryFillers = [];
     private readonly List<WorldMenuFiller> _worldFillers = [];
     private readonly List<(MenuKind Menu, string Text, Action<OptionClick> Handler)> _overrides = [];
+    private readonly List<ShownCommand> _shown = [];
+
+    // Kept (global) refs, so an open menu's option can be re-checked after the fill event has returned.
+    private sealed record ShownCommand(int Player, IInventoryCommand Command, GameObject Menu, GameObject Option, GameObject Item)
+    {
+        public void Release()
+        {
+            Menu.Dispose();
+            Option.Dispose();
+            Item.Dispose();
+        }
+    }
 
     private ContextMenuRegistry(ModInstance owner)
     {
@@ -45,6 +58,9 @@ internal sealed class ContextMenuRegistry
             else if (!type.IsSubclassOf(typeof(ModInstance)))
                 registry.AddMethods(type, null);
         }
+
+        foreach (var command in registry._commands)
+            command.CanExecuteChanged += (_, _) => registry.Refresh(command);
 
         var host = registry._owner.Host;
         if (registry._commands.Count + registry._inventoryFillers.Count > 0 || registry._overrides.Any(o => o.Menu == MenuKind.Inventory))
@@ -86,6 +102,7 @@ internal sealed class ContextMenuRegistry
     {
         var player = args.Get<int>(0);
         _dispatch.BeginMenu(player);
+        ReleaseShown(player);
         var menu = new InventoryMenu(LuaConvert.To<ISContextMenu>(args[1]), _dispatch, player, InventoryMenu.Representatives((GameObject)args[2]!));
 
         IsoPlayer? character = null;
@@ -100,12 +117,8 @@ internal sealed class ContextMenuRegistry
                 if (item is null)
                     return;
                 var option = menu.AddOption(Globals.GetText(command.Text), click => command.Execute((GameObject)click.Args[0]!, click.Player), item);
-                if (!state.IsEnabled)
-                {
-                    option.Enabled = false;
-                    if (state.Reason is not null)
-                        option.Tooltip = Globals.GetText(state.Reason);
-                }
+                Apply(option, state);
+                _shown.Add(new ShownCommand(player, command, menu.Native.Table.Keep(), option.Native.Table.Keep(), item.Keep()));
             });
         }
         foreach (var filler in _inventoryFillers)
@@ -124,6 +137,42 @@ internal sealed class ContextMenuRegistry
         foreach (var filler in _worldFillers)
             Guard(filler.GetType().Name, () => filler.Fill(menu));
         ApplyOverrides(MenuKind.World, menu);
+    }
+
+    private void Refresh(IInventoryCommand command)
+    {
+        foreach (var shown in _shown.Where(s => s.Command == command).ToList())
+        {
+            Guard(command.GetType().Name, () =>
+            {
+                var menu = new ContextMenu(LuaTypes.Create<ISContextMenu>(shown.Menu), _dispatch, shown.Player, ISInventoryPaneContextMenu.AddToolTip);
+                var option = new MenuOption(menu, LuaTypes.Create<ISContextMenuOption>(shown.Option));
+                var state = command.CanExecute(shown.Item, Globals.GetSpecificPlayer(shown.Player));
+                if (state.IsVisible)
+                {
+                    Apply(option, state);
+                    return;
+                }
+                option.Remove();
+                _shown.Remove(shown);
+                shown.Release();
+            });
+        }
+    }
+
+    private static void Apply(MenuOption option, CommandState state)
+    {
+        option.Enabled = state.IsEnabled;
+        option.Tooltip = state is { IsEnabled: false, Reason: { } reason } ? Globals.GetText(reason) : null;
+    }
+
+    private void ReleaseShown(int player)
+    {
+        foreach (var shown in _shown.Where(s => s.Player == player).ToList())
+        {
+            _shown.Remove(shown);
+            shown.Release();
+        }
     }
 
     private void ApplyOverrides(MenuKind kind, ContextMenu menu)
@@ -190,6 +239,13 @@ internal sealed class ContextMenuRegistry
         }
 
         public string Text { get; }
+
+        // Attribute commands have no instance a mod could notify through.
+        public event EventHandler? CanExecuteChanged
+        {
+            add { }
+            remove { }
+        }
 
         public bool Accepts(GameObject item)
         {

@@ -14,6 +14,8 @@ internal interface IInventoryCommand
     CommandState CanExecute(GameObject item, IsoPlayer player);
 
     void Execute(GameObject item, IsoPlayer player);
+
+    event EventHandler? CanExecuteChanged;
 }
 
 /// <summary>
@@ -33,9 +35,13 @@ public abstract class InventoryCommand<TItem> : IInventoryCommand where TItem : 
 
     public abstract void Execute(TItem item, IsoPlayer player);
 
-    /// <summary>For surfaces that show the command for a while. Context menus re-check on every opening and don't listen yet.</summary>
+    /// <summary>Raised by <see cref="NotifyCanExecuteChanged"/>; open menus showing the command re-check it.</summary>
     public event EventHandler? CanExecuteChanged;
 
+    /// <summary>
+    /// Re-checks <see cref="CanExecute"/> for this command's options in open menus: they're enabled, greyed out or
+    /// removed to match. Menus that were hiding it don't gain it until they're reopened.
+    /// </summary>
     public void NotifyCanExecuteChanged() => CanExecuteChanged?.Invoke(this, EventArgs.Empty);
 
     bool IInventoryCommand.Accepts(GameObject item) =>
