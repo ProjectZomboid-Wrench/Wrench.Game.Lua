@@ -1,5 +1,4 @@
-using Wrench;
-using Zomboid.Java;
+using Zomboid.Lua.Umbrella;
 
 namespace Zomboid.Lua.ContextMenus;
 
@@ -8,46 +7,46 @@ public sealed class MenuOption
 {
     private readonly ContextMenu _menu;
 
-    internal MenuOption(ContextMenu menu, GameObject table)
+    internal MenuOption(ContextMenu menu, ISContextMenuOption native)
     {
         _menu = menu;
-        Table = table;
+        Native = native;
     }
 
     /// <summary>The underlying option table.</summary>
-    public GameObject Table { get; }
+    public ISContextMenuOption Native { get; }
 
     public string Text
     {
-        get => (string)Table["name"];
-        set => Table["name"] = value;
+        get => Native.Name;
+        set => Native.Name = value;
     }
 
     /// <summary>False shows the option greyed out (<c>notAvailable</c>); give it a <see cref="Tooltip"/> saying why.</summary>
     public bool Enabled
     {
-        get => Table["notAvailable"] is not true;
-        set => Table["notAvailable"] = !value;
+        get => Native.NotAvailable is not true;
+        set => Native.NotAvailable = !value;
     }
 
     public string? Tooltip
     {
-        get => Table["toolTip"] is GameObject tooltip ? (string?)tooltip["description"] : null;
+        get => Native.ToolTip?.Description;
         set
         {
             if (value is null)
             {
-                Table["toolTip"] = null;
+                Native.ToolTip = null;
                 return;
             }
             var tooltip = _menu.NewTooltip();
-            tooltip["description"] = value;
-            Table["toolTip"] = tooltip;
+            tooltip.Description = value;
+            Native.ToolTip = tooltip;
         }
     }
 
     /// <summary>The submenu this option opens, if any.</summary>
-    public ContextMenu? SubMenu => _menu.SubMenu(Table["subOption"]);
+    public ContextMenu? SubMenu => _menu.SubMenu(Native.SubOption);
 
     public void Remove() => _menu.Remove(Text);
 
@@ -57,8 +56,8 @@ public sealed class MenuOption
     /// </summary>
     public void Override(Action<OptionClick> handler)
     {
-        var id = _menu.Dispatch.Add(_menu.PlayerNumber, handler, (object?)Table["onSelect"], (object?)Table["target"]);
-        Table["onSelect"] = _menu.Dispatch.Function;
-        Table["target"] = id;
+        var id = _menu.Dispatch.Add(_menu.PlayerNumber, handler, Native.OnSelect, (object?)Native.Target);
+        Native.OnSelect = _menu.Dispatch.Function;
+        Native.Target = id;
     }
 }

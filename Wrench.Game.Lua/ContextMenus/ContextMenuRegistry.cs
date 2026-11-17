@@ -86,7 +86,7 @@ internal sealed class ContextMenuRegistry
     {
         var player = args.Get<int>(0);
         _dispatch.BeginMenu(player);
-        var menu = new InventoryMenu((GameObject)args[1]!, _dispatch, player, InventoryMenu.Representatives((GameObject)args[2]!));
+        var menu = new InventoryMenu(LuaConvert.To<ISContextMenu>(args[1]), _dispatch, player, InventoryMenu.Representatives((GameObject)args[2]!));
 
         IsoPlayer? character = null;
         foreach (var command in _commands)
@@ -120,7 +120,7 @@ internal sealed class ContextMenuRegistry
             return;
         var player = args.Get<int>(0);
         _dispatch.BeginMenu(player);
-        var menu = new WorldMenu((GameObject)args[1]!, _dispatch, player, (GameObject)args[2]!);
+        var menu = new WorldMenu(LuaConvert.To<ISContextMenu>(args[1]), _dispatch, player, (GameObject)args[2]!);
         foreach (var filler in _worldFillers)
             Guard(filler.GetType().Name, () => filler.Fill(menu));
         ApplyOverrides(MenuKind.World, menu);
