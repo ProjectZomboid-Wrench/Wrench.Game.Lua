@@ -89,7 +89,7 @@ internal sealed class LuaClass
 
             var bound = new object?[parameters.Length];
             for (var i = 0; i < parameters.Length; i++)
-                bound[i] = JavaConvert.To(i + 1 < args.Length ? args[i + 1] : null, parameters[i].ParameterType);
+                bound[i] = LuaConvert.To(i + 1 < args.Length ? args[i + 1] : null, parameters[i].ParameterType);
             try
             {
                 return method.Invoke(target, bound);
@@ -109,36 +109,45 @@ internal sealed class LuaClass
     {
         for (var t = type; t is not null; t = t.BaseType)
         {
-            if (t.GetCustomAttribute<LuaClassAttribute>() is { } attribute)
-                return attribute.BaseClass;
+            if (t.GetCustomAttribute<LuaClassAttribute>(inherit: false) is { } attribute)
+                return attribute.Name;
         }
-        throw new InvalidOperationException($"{type.Name} has no [LuaClass] naming the Lua class it extends");
+        throw new InvalidOperationException($"{type.Name} has no [LuaClass] base naming the Lua class it extends");
     }
 
+    // A non-virtual [LuaMethod] is an entry point that always goes in (the most derived one per name). A virtual one
+    // only goes in where its most derived implementation is C# subclass code rather than a generated wrapper, so
+    // vanilla's Lua runs for everything the subclass leaves alone.
     private static Dictionary<string, MethodInfo> DispatchedMethods(Type type)
     {
-        var methods = new Dictionary<string, MethodInfo>(StringComparer.Ordinal);
+        var entries = new Dictionary<string, MethodInfo>(StringComparer.Ordinal);
+        var overrides = new Dictionary<string, MethodInfo>(StringComparer.Ordinal);
         for (var t = type; t is not null && t != typeof(LuaObject); t = t.BaseType)
         {
             foreach (var method in t.GetMethods(Declared))
             {
-                if (method.GetCustomAttribute<LuaMethodAttribute>() is not { } attribute || methods.ContainsKey(attribute.Name))
+                if (method.GetCustomAttribute<LuaMethodAttribute>(inherit: false) is not { } attribute)
                     continue;
-                if (!method.IsVirtual || method.IsAbstract || IsOverridden(type, method))
-                    methods[attribute.Name] = method;
+                if (!method.IsVirtual)
+                    entries.TryAdd(attribute.Name, method);
+                else if (Implementation(type, method).DeclaringType?.GetCustomAttribute<LuaClassAttribute>(inherit: false) is null)
+                    overrides.TryAdd(attribute.Name, method);
             }
         }
-        return methods;
+        foreach (var (name, method) in overrides)
+            entries.TryAdd(name, method);
+        return entries;
     }
 
-    private static bool IsOverridden(Type type, MethodInfo method)
+    private static MethodInfo Implementation(Type type, MethodInfo method)
     {
+        var slot = method.GetBaseDefinition();
         for (var t = type; t is not null && t != method.DeclaringType; t = t.BaseType)
         {
-            if (t.GetMethods(Declared).Any(m => m.GetBaseDefinition() == method))
-                return true;
+            if (t.GetMethods(Declared).FirstOrDefault(m => m.GetBaseDefinition() == slot) is { } found)
+                return found;
         }
-        return false;
+        return method;
     }
 
     private static ILuaHost Host => LuaHost.Required;

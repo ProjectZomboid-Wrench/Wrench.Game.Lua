@@ -1,0 +1,57 @@
+# Corrections and additions merged over pz-lua-stubdata by tools/GenerateLuaClasses.cs. Same format; only classes
+# the data already has are touched. Worth sending upstream where they're data errors rather than Wrench needs.
+version: "1.1"
+languages:
+  lua:
+    classes:
+      ISBaseTimedAction:
+        fields:
+          # Vanilla actions take any character (zombies and animals run some), not only players.
+          character:
+            type: IsoGameCharacter
+        constructors:
+          - parameters:
+              - name: character
+                type: IsoGameCharacter
+        methods:
+          # The base returns nothing, which LuaTimedActionNew reads as false; every real action returns a boolean.
+          - name: isValid
+            return:
+              - type: boolean
+          # Not defined on the base, but B42's LuaTimedActionNew calls it after perform (on the server in multiplayer).
+          - name: complete
+            return:
+              - type: boolean
+      # Java's UIElement reads a true result as "handled", so the mouse handlers return booleans where it matters.
+      ISUIElement:
+        methods:
+          - name: onMouseUp
+            return: [{ type: boolean, nullable: true }]
+          - name: onMouseUpOutside
+            return: [{ type: boolean, nullable: true }]
+          - name: onMouseDownOutside
+            return: [{ type: boolean, nullable: true }]
+          - name: onMouseMove
+            return: [{ type: boolean, nullable: true }]
+          - name: onMouseMoveOutside
+            return: [{ type: boolean, nullable: true }]
+          - name: onRightMouseDown
+            return: [{ type: boolean, nullable: true }]
+          - name: onRightMouseUp
+            return: [{ type: boolean, nullable: true }]
+      ISPanelJoypad:
+        methods:
+          - name: onMouseDown
+            return: [{ type: boolean, nullable: true }]
+      CGlobalObjectSystem:
+        methods:
+          - name: isValidIsoObject
+            return: [{ type: boolean }]
+      SGlobalObjectSystem:
+        methods:
+          - name: isValidIsoObject
+            return: [{ type: boolean }]
+      ISPickCharacterCursor:
+        methods:
+          - name: isValidCharacter
+            return: [{ type: boolean }]
