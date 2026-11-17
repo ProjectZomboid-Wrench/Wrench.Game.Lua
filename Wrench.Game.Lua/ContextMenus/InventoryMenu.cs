@@ -1,8 +1,9 @@
 using Wrench;
-using Zomboid.Inventory;
-using Zomboid.Iso;
+using Zomboid.Java;
+using Zomboid.Java.Inventory;
+using Zomboid.Java.Iso;
 
-namespace Zomboid.ContextMenus;
+namespace Zomboid.Lua.ContextMenus;
 
 /// <summary>The context menu for items in an inventory or container pane.</summary>
 public sealed class InventoryMenu : ContextMenu

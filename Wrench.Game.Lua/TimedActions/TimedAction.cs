@@ -1,9 +1,10 @@
 using System.Globalization;
 using Wrench;
-using Zomboid.Characters;
-using Zomboid.Characters.CharacterTimedActions;
+using Zomboid.Java;
+using Zomboid.Java.Characters;
+using Zomboid.Java.Characters.CharacterTimedActions;
 
-namespace Zomboid.TimedActions;
+namespace Zomboid.Lua.TimedActions;
 
 /// <summary>
 /// A timed action written in C#: an <c>ISBaseTimedAction</c> subclass that PZ queues, runs and cancels like its own.

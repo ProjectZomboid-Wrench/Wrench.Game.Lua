@@ -1,6 +1,7 @@
 using Wrench;
+using Zomboid.Java;
 
-namespace Zomboid;
+namespace Zomboid.Lua;
 
 /// <summary>Names the Lua class, one built with <c>derive</c> such as <c>ISBaseTimedAction</c>, that a <see cref="LuaObject"/> extends.</summary>
 [AttributeUsage(AttributeTargets.Class, Inherited = false)]

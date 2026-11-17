@@ -1,4 +1,6 @@
-namespace Zomboid.ContextMenus;
+using Zomboid.Java;
+
+namespace Zomboid.Lua.ContextMenus;
 
 /// <summary>
 /// Makes a method of a mod class an inventory context-menu option: <c>void Garnish(Food plate, IsoPlayer player)</c>.

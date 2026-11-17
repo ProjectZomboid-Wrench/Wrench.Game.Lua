@@ -1,8 +1,9 @@
 using Wrench;
-using Zomboid.Characters;
-using Zomboid.Inventory;
+using Zomboid.Java;
+using Zomboid.Java.Characters;
+using Zomboid.Java.Inventory;
 
-namespace Zomboid.ContextMenus;
+namespace Zomboid.Lua.ContextMenus;
 
 internal interface IInventoryCommand
 {

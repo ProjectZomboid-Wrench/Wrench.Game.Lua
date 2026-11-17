@@ -1,8 +1,9 @@
 using System.Reflection;
 using System.Runtime.ExceptionServices;
 using Wrench;
+using Zomboid.Java;
 
-namespace Zomboid;
+namespace Zomboid.Lua;
 
 /// <summary>The Lua class behind one <see cref="LuaObject"/> subclass, rebuilt when PZ reloads its Lua.</summary>
 internal sealed class LuaClass

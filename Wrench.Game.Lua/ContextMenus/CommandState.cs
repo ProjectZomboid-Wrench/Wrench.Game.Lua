@@ -1,4 +1,6 @@
-namespace Zomboid.ContextMenus;
+using Zomboid.Java;
+
+namespace Zomboid.Lua.ContextMenus;
 
 /// <summary>Whether a command's option is shown, and if shown whether it can be clicked.</summary>
 public readonly record struct CommandState

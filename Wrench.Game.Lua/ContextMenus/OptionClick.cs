@@ -1,7 +1,8 @@
 using Wrench;
-using Zomboid.Characters;
+using Zomboid.Java;
+using Zomboid.Java.Characters;
 
-namespace Zomboid.ContextMenus;
+namespace Zomboid.Lua.ContextMenus;
 
 /// <summary>A click on a context-menu option, with the option's arguments as they are now.</summary>
 public sealed class OptionClick

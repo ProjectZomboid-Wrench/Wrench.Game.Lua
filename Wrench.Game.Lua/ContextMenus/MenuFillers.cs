@@ -1,4 +1,6 @@
-namespace Zomboid.ContextMenus;
+using Zomboid.Java;
+
+namespace Zomboid.Lua.ContextMenus;
 
 /// <summary>Adds to or changes the inventory context menu each time it opens. Found and created when the mod loads.</summary>
 public abstract class InventoryMenuFiller

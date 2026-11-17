@@ -1,6 +1,7 @@
 using Wrench;
+using Zomboid.Java;
 
-namespace Zomboid.ContextMenus;
+namespace Zomboid.Lua.ContextMenus;
 
 /// <summary>An option in a <see cref="ContextMenu"/>, whoever added it: vanilla, a Lua mod or a .NET mod.</summary>
 public sealed class MenuOption

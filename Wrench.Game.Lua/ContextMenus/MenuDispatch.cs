@@ -1,6 +1,7 @@
 using Wrench;
+using Zomboid.Java;
 
-namespace Zomboid.ContextMenus;
+namespace Zomboid.Lua.ContextMenus;
 
 /// <summary>
 /// One mod's option handlers. Every option it adds or overrides gets the same Lua function as <c>onSelect</c> and a

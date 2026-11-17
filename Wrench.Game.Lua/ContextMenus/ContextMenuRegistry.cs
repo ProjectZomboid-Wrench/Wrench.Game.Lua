@@ -1,9 +1,11 @@
 using System.Reflection;
 using System.Runtime.ExceptionServices;
 using Wrench;
-using Zomboid.Characters;
+using Zomboid.Java;
+using Zomboid.Java.Characters;
+using Zomboid.Java.Inventory;
 
-namespace Zomboid.ContextMenus;
+namespace Zomboid.Lua.ContextMenus;
 
 /// <summary>Finds a mod's commands, fillers and overrides when it loads and runs them whenever PZ fills a context menu.</summary>
 internal sealed class ContextMenuRegistry
@@ -173,7 +175,7 @@ internal sealed class ContextMenuRegistry
             _itemFilter = attribute.Item;
             var where = $"[InventoryCommand] {execute.DeclaringType?.Name}.{execute.Name}";
             var parameters = execute.GetParameters();
-            if (parameters.Length is < 1 or > 2 || !typeof(Inventory.InventoryItem).IsAssignableFrom(parameters[0].ParameterType)
+            if (parameters.Length is < 1 or > 2 || !typeof(InventoryItem).IsAssignableFrom(parameters[0].ParameterType)
                 || parameters.Length == 2 && !parameters[1].ParameterType.IsAssignableFrom(typeof(IsoPlayer)))
                 throw new InvalidOperationException($"{where} must take an InventoryItem type and optionally the player");
             _itemType = parameters[0].ParameterType;
@@ -191,7 +193,7 @@ internal sealed class ContextMenuRegistry
 
         public bool Accepts(GameObject item)
         {
-            var wrapper = JavaConvert.To<Inventory.InventoryItem>(item);
+            var wrapper = JavaConvert.To<InventoryItem>(item);
             return _itemType.IsInstanceOfType(wrapper) && (_itemFilter is null || wrapper.GetFullType() == _itemFilter);
         }
 

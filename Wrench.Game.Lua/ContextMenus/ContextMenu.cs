@@ -1,7 +1,8 @@
 using Wrench;
-using Zomboid.Characters;
+using Zomboid.Java;
+using Zomboid.Java.Characters;
 
-namespace Zomboid.ContextMenus;
+namespace Zomboid.Lua.ContextMenus;
 
 /// <summary>
 /// A context menu being built (PZ's <c>ISContextMenu</c>). Valid while it is filled; option handlers run later, on
