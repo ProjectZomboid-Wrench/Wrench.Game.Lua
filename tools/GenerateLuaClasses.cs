@@ -1,5 +1,5 @@
 // Regenerates Wrench.Game.Lua/Generated/ from vanilla's Lua classes:
-//   dotnet run tools/GenerateLuaClasses.cs -- <pz-lua-stubdata checkout> <projectzomboid dir>
+//   dotnet run tools/GenerateLuaClasses.cs -- <pz-lua-stubdata checkout> <projectzomboid dir> [Wrench.Game.Java checkout, default ../Wrench.Game.Java]
 // Types come from pz-lua-stubdata (github.com/PZ-Umbrella/pz-lua-stubdata, CC BY 4.0) plus tools/luaclasses/overlay.yml;
 // the game's own media/lua decides which classes and methods exist and their parameter names, since the data can lag.
 #:package YamlDotNet@16.3.0
@@ -25,7 +25,8 @@ var report = model.Reconcile(source);
 // After reconciling, so the overlay can add what the game's Lua doesn't define (complete() on the base action).
 model.Load(Path.Combine(repo, "tools", "luaclasses", "overlay.yml"), null, overlay: true);
 
-var javaTypes = JavaNames.Load(Path.Combine(repo, "Wrench.Game.Java", "Generated", "JavaTypes.Registry.g.cs"));
+var gameJava = Path.GetFullPath(args.Length > 2 ? args[2] : Path.Combine(repo, "..", "Wrench.Game.Java"));
+var javaTypes = JavaNames.Load(Path.Combine(gameJava, "Wrench.Game.Java", "Generated", "JavaTypes.Registry.g.cs"));
 if (Directory.Exists(output))
     Directory.Delete(output, recursive: true);
 Directory.CreateDirectory(output);
