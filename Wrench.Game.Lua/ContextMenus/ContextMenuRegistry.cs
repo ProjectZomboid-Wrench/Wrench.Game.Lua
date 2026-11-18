@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.ExceptionServices;
 using Wrench;
 using Zomboid.Java;
@@ -13,6 +14,8 @@ internal sealed class ContextMenuRegistry
 {
     private const BindingFlags AnyMethod =
         BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
+
+    private static readonly ConditionalWeakTable<Assembly, ContextMenuRegistry> ByAssembly = new();
 
     private readonly ModInstance _owner;
     private readonly MenuDispatch _dispatch;
@@ -61,6 +64,7 @@ internal sealed class ContextMenuRegistry
 
         foreach (var command in registry._commands)
             command.CanExecuteChanged += (_, _) => registry.Refresh(command);
+        ByAssembly.AddOrUpdate(assembly, registry);
 
         var host = registry._owner.Host;
         if (registry._commands.Count + registry._inventoryFillers.Count > 0 || registry._overrides.Any(o => o.Menu == MenuKind.Inventory))
@@ -69,15 +73,13 @@ internal sealed class ContextMenuRegistry
             host.RegisterLuaEvent(registry._owner, LuaEvents.OnFillWorldObjectContextMenu, registry.FillWorld);
     }
 
-    private static bool IsCommandType(Type type)
-    {
-        for (var t = type.BaseType; t is not null; t = t.BaseType)
-        {
-            if (t.IsGenericType && t.GetGenericTypeDefinition() == typeof(InventoryCommand<>))
-                return true;
-        }
-        return false;
-    }
+    private static bool IsCommandType(Type type) => type.IsSubclassOf(typeof(InventoryCommand));
+
+    public static InventoryCommand Command(ModInstance mod, Type commandType) =>
+        ByAssembly.TryGetValue(mod.GetType().Assembly, out var registry)
+        && registry._commands.FirstOrDefault(c => c.GetType() == commandType) is InventoryCommand command
+            ? command
+            : throw new InvalidOperationException($"{commandType.Name} isn't one of {mod.Id}'s inventory commands");
 
     // Instance methods only on mod classes, where there's an instance to call them on; static ones anywhere.
     private void AddMethods(Type type, ModInstance? instance)
@@ -116,7 +118,7 @@ internal sealed class ContextMenuRegistry
                     .FirstOrDefault(c => c.State.IsVisible);
                 if (item is null)
                     return;
-                var option = menu.AddOption(Globals.GetText(command.Text), click => command.Execute((GameObject)click.Args[0]!, click.Player), item);
+                var option = menu.AddOption(Globals.GetText(command.TextFor(item)), click => command.Execute((GameObject)click.Args[0]!, click.Player), item);
                 Apply(option, state);
                 _shown.Add(new ShownCommand(player, command, menu.Native.Table.Keep(), option.Native.Table.Keep(), item.Keep()));
             });
@@ -239,6 +241,8 @@ internal sealed class ContextMenuRegistry
         }
 
         public string Text { get; }
+
+        public string TextFor(GameObject item) => Text;
 
         // Attribute commands have no instance a mod could notify through.
         public event EventHandler? CanExecuteChanged
