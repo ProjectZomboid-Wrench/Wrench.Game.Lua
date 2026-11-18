@@ -58,8 +58,9 @@ public abstract class LuaObject : IGameObjectView, IEquatable<LuaObject>
     }
 
     /// <summary>The object's Lua table.</summary>
-    public GameObject Table => _table ?? throw new ObjectDisposedException(GetType().Name,
-        "This Lua object was released; Lua calls on its table now go to the Lua base class.");
+    public GameObject Table => _table is null
+        ? throw new ObjectDisposedException(GetType().Name, "This Lua object was released; Lua calls on its table now go to the Lua base class.")
+        : _table.IsValid ? _table : throw _table.Expired(GetType().Name);
 
     /// <summary>True once <see cref="Release"/> has run.</summary>
     public bool IsReleased => _table is null;
