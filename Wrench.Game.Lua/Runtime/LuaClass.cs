@@ -101,7 +101,18 @@ internal sealed class LuaClass
 
             var bound = new object?[parameters.Length];
             for (var i = 0; i < parameters.Length; i++)
-                bound[i] = LuaConvert.To(i + 1 < args.Length ? args[i + 1] : null, parameters[i].ParameterType);
+            {
+                if (i == parameters.Length - 1 && parameters[i].IsDefined(typeof(ParamArrayAttribute), false))
+                {
+                    var elementType = parameters[i].ParameterType.GetElementType()!;
+                    var rest = Array.CreateInstance(elementType, Math.Max(0, args.Length - 1 - i));
+                    for (var j = 0; j < rest.Length; j++)
+                        rest.SetValue(LuaConvert.To(args[i + 1 + j], elementType), j);
+                    bound[i] = rest;
+                }
+                else
+                    bound[i] = LuaConvert.To(i + 1 < args.Length ? args[i + 1] : null, parameters[i].ParameterType);
+            }
             try
             {
                 return method.Invoke(target, bound);
