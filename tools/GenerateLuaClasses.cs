@@ -3,10 +3,14 @@
 // Types come from pz-lua-stubdata (github.com/PZ-Umbrella/pz-lua-stubdata, CC BY 4.0) plus tools/luaclasses/overlay.yml;
 // the game's own media/lua decides which classes and methods exist and their parameter names, since the data can lag.
 #:package YamlDotNet@16.3.0
-using System.Diagnostics;
+#:include Shared/Tool.cs
+#:include Shared/CSharpNames.cs
+#:include Shared/Yaml.cs
 using System.Text;
 using System.Text.RegularExpressions;
 using YamlDotNet.RepresentationModel;
+using static CSharpNames;
+using static Tool;
 
 var stubdata = Path.GetFullPath(args[0]);
 var gameLua = Path.Combine(Path.GetFullPath(args[1]), "media", "lua");
@@ -21,7 +25,7 @@ var report = model.Reconcile(source);
 // After reconciling, so the overlay can add what the game's Lua doesn't define (complete() on the base action).
 model.Load(Path.Combine(repo, "tools", "luaclasses", "overlay.yml"), null, overlay: true);
 
-var javaTypes = JavaNames.Load(Path.Combine(repo, "Wrench.Game.Java", "Generated", "JavaTypes.Registry.cs"));
+var javaTypes = JavaNames.Load(Path.Combine(repo, "Wrench.Game.Java", "Generated", "JavaTypes.Registry.g.cs"));
 if (Directory.Exists(output))
     Directory.Delete(output, recursive: true);
 Directory.CreateDirectory(output);
@@ -29,22 +33,6 @@ var commit = GitCommit(stubdata);
 var files = new LuaGenerator(model, javaTypes, commit).Write(output);
 Console.WriteLine($"{model.Classes.Count(c => c.Value.IsGenerated)} classes, {model.Tables.Count} tables, {model.Functions.Count} functions -> {files} files in {output}");
 Console.WriteLine(report);
-
-static string GitCommit(string checkout)
-{
-    try
-    {
-        var start = new ProcessStartInfo("git", ["-C", checkout, "rev-parse", "--short", "HEAD"]) { RedirectStandardOutput = true };
-        using var process = Process.Start(start)!;
-        var text = process.StandardOutput.ReadToEnd().Trim();
-        process.WaitForExit();
-        return process.ExitCode == 0 ? text : "(unknown commit)";
-    }
-    catch (Exception)
-    {
-        return "(unknown commit)";
-    }
-}
 
 sealed record LParam(string Name, string? Type, bool Nullable);
 
@@ -60,6 +48,8 @@ sealed class LClass(string name)
     public bool IsTable { get; set; }
     public string? File { get; set; }
     public string? Notes { get; set; }
+    // From the overlay: a C# name for classes whose generated one reads badly.
+    public string? CsName { get; set; }
     public Dictionary<string, LField> Fields { get; } = new(StringComparer.Ordinal);
     public Dictionary<string, LField> StaticFields { get; } = new(StringComparer.Ordinal);
     public List<LFunc> Methods { get; set; } = [];
@@ -77,6 +67,7 @@ sealed class LuaModel
     public Dictionary<string, LClass> Classes { get; } = new(StringComparer.Ordinal);
     public Dictionary<string, LClass> Tables { get; } = new(StringComparer.Ordinal);
     public Dictionary<string, LFunc> Functions { get; } = new(StringComparer.Ordinal);
+    public Dictionary<string, LField> Globals { get; } = new(StringComparer.Ordinal);
     public Dictionary<string, string> Aliases { get; } = new(StringComparer.Ordinal);
 
     public void Load(string path, string? relative, bool overlay = false)
@@ -89,6 +80,7 @@ sealed class LuaModel
         var folder = relative is null ? null : Path.GetDirectoryName(relative)!.Replace('\\', '/');
         LoadClasses(Y.Child(lua, "classes"), Classes, folder, overlay, isTable: false);
         LoadClasses(Y.Child(lua, "tables"), Tables, folder, overlay, isTable: true);
+        Fields(Y.Child(lua, "fields"), Globals);
         if (Y.Child(lua, "functions") is YamlSequenceNode functions)
         {
             foreach (var function in functions.Children)
@@ -110,13 +102,15 @@ sealed class LuaModel
             var name = key.ToString();
             if (!into.TryGetValue(name, out var type))
             {
-                if (overlay)
+                // Overlays may add table shapes, which describe Lua tables rather than classes the game defines.
+                if (overlay && !name.StartsWith("umbrella.", StringComparison.Ordinal))
                     continue;
                 into[name] = type = new LClass(name) { IsTable = isTable, File = folder };
             }
             type.Extends = Y.Text(body, "extends") ?? type.Extends;
             type.Local |= Y.Text(body, "local") == "true";
             type.Notes = Y.Text(body, "notes") ?? type.Notes;
+            type.CsName = Y.Text(body, "csName") ?? type.CsName;
             Fields(Y.Child(body, "fields"), type.Fields);
             Fields(Y.Child(body, "staticFields"), type.StaticFields);
             Merge(type.Methods, Y.Child(body, "methods"), overlay);
@@ -330,15 +324,6 @@ static class JavaNames
     }
 }
 
-static class Y
-{
-    public static YamlNode? Child(YamlNode? node, string key) =>
-        node is YamlMappingNode map && map.Children.TryGetValue(key, out var value) ? value : null;
-
-    public static string? Text(YamlNode? node, string key) =>
-        Child(node, key) is YamlScalarNode { Value: { Length: > 0 } value } ? value : null;
-}
-
 sealed record CsType(string Name, bool IsValueType, bool IsDynamic = false)
 {
     public static readonly CsType Dynamic = new("dynamic", false, IsDynamic: true);
@@ -352,23 +337,12 @@ sealed class LuaGenerator
     private const string Ns = "Zomboid.Lua";
     private const string ShapeNs = "Zomboid.Lua.Umbrella";
 
-    private static readonly HashSet<string> Keywords =
-    [
-        "abstract", "as", "base", "bool", "break", "byte", "case", "catch", "char", "checked", "class", "const",
-        "continue", "decimal", "default", "delegate", "do", "double", "else", "enum", "event", "explicit", "extern",
-        "false", "finally", "fixed", "float", "for", "foreach", "goto", "if", "implicit", "in", "int", "interface",
-        "internal", "is", "lock", "long", "namespace", "new", "null", "object", "operator", "out", "override",
-        "params", "private", "protected", "public", "readonly", "ref", "return", "sbyte", "sealed", "short", "sizeof",
-        "stackalloc", "static", "string", "struct", "switch", "this", "throw", "true", "try", "typeof", "uint",
-        "ulong", "unchecked", "unsafe", "ushort", "using", "virtual", "void", "volatile", "while", "union", "dynamic",
-    ];
-
     // LuaObject's own members and the runtime's type names, which generated members and classes must not take.
     private static readonly HashSet<string> Reserved =
     [
         "Table", "IsReleased", "IsSubclassInstance", "Get", "Set", "CallLua", "CallBase", "Invoke", "InvokeVoid",
-        "Release", "Equals", "GetHashCode", "ToString", "GetType", "MemberwiseClone", "Finalize", "ReferenceEquals",
-        "New", "Class", "Id", "Mod", "IsTruthy", "First", "DropTable",
+        "Release", "Dispose", "Field", "Equals", "GetHashCode", "ToString", "GetType", "MemberwiseClone", "Finalize", "ReferenceEquals",
+        "New", "Class", "ObjectId", "Mod", "IsTruthy", "First", "DropTable",
     ];
 
     private static readonly HashSet<string> RuntimeTypes =
@@ -393,7 +367,7 @@ sealed class LuaGenerator
         var used = new HashSet<string>(StringComparer.Ordinal);
         foreach (var type in Generated.OrderBy(c => c.IsShape).ThenBy(c => c.Name, StringComparer.Ordinal))
         {
-            var simple = type.IsShape ? string.Concat(type.Name["umbrella.".Length..].Split('.').Select(Pascal)) : type.Name;
+            var simple = type.CsName ?? (type.IsShape ? string.Concat(type.Name["umbrella.".Length..].Split('.').Select(Pascal)) : type.Name);
             if (RuntimeTypes.Contains(simple) || Keywords.Contains(simple))
                 simple += "_";
             while (!used.Add((type.IsShape ? ShapeNs : Ns) + "." + simple))
@@ -428,7 +402,7 @@ sealed class LuaGenerator
     // boolean on some panels. One type per slot keeps every override chain intact.
     private void UnifyReturns()
     {
-        var entries = Generated.Where(c => !c.IsShape)
+        var entries = Generated
             .SelectMany(c => c.Methods.Select(m => (Slot: Slot(c, m), Return: Return(m), IsRoot: Slot(c, m) == c.Name + "." + SlotKey(m))));
         foreach (var slot in entries.GroupBy(x => x.Slot))
         {
@@ -453,9 +427,37 @@ sealed class LuaGenerator
         }
     }
 
+    // (slot) -> per parameter, whether any declaration in the slot takes nil. An override can't narrow T? to T.
+    private readonly Dictionary<string, bool[]> _slotNullable = new(StringComparer.Ordinal);
+
+    private void UnifyParameterNullability()
+    {
+        foreach (var slot in Generated.SelectMany(c => c.Methods.Select(m => (Slot: Slot(c, m), m.Params))).GroupBy(x => x.Slot))
+        {
+            var count = slot.First().Params.Count;
+            var nullable = new bool[count];
+            foreach (var (_, parameters) in slot)
+            {
+                for (var i = 0; i < count && i < parameters.Count; i++)
+                    nullable[i] |= parameters[i].Nullable && !IsValueParameter(parameters[i]);
+            }
+            if (nullable.Any(n => n))
+                _slotNullable[slot.Key] = nullable;
+        }
+    }
+
+    // Value-type T? is part of the signature, so it already separates slots.
+    private bool IsValueParameter(LParam parameter) => parameter.Name != "..." && parameter.Type is { } type && Map(type).IsValueType;
+
+    private List<LParam> SlotParameters(LClass type, LFunc method) =>
+        _slotNullable.TryGetValue(Slot(type, method), out var nullable)
+            ? [.. method.Params.Select((p, i) => i < nullable.Length && nullable[i] && !IsValueParameter(p) ? p with { Nullable = true } : p)]
+            : method.Params;
+
     public int Write(string directory)
     {
         UnifyReturns();
+        UnifyParameterNullability();
         // Every base is written before its subclasses, whatever file they land in, so override/new sees its members.
         var classes = new Dictionary<string, StringBuilder>(StringComparer.Ordinal);
         foreach (var type in Ordered(Generated))
@@ -469,7 +471,7 @@ sealed class LuaGenerator
             code.AppendLine($"namespace {(group.Key == "umbrella" ? ShapeNs : Ns)};").AppendLine();
             foreach (var type in group.OrderBy(c => c.Name, StringComparer.Ordinal))
                 code.Append(classes[type.Name]);
-            File.WriteAllText(Path.Combine(directory, group.Key + ".cs"), code.ToString());
+            File.WriteAllText(Path.Combine(directory, group.Key + ".g.cs"), code.ToString());
             files++;
         }
 
@@ -477,7 +479,7 @@ sealed class LuaGenerator
         foreach (var table in _model.Tables.Values.Where(t => t.IsGenerated && !_csNames.ContainsKey(t.Name)).OrderBy(t => t.Name, StringComparer.Ordinal))
             WriteTable(tables, table);
         WriteGlobals(tables);
-        File.WriteAllText(Path.Combine(directory, "Tables.cs"), tables.ToString());
+        File.WriteAllText(Path.Combine(directory, "Tables.g.cs"), tables.ToString());
 
         var registry = Header().AppendLine($"namespace {Ns};").AppendLine()
             .AppendLine("internal static partial class LuaTypes")
@@ -496,7 +498,7 @@ sealed class LuaGenerator
             registry.AppendLine($"        byType[typeof({cs})] = w => new {cs}(w);");
         }
         registry.AppendLine("    }").AppendLine("}");
-        File.WriteAllText(Path.Combine(directory, "LuaTypes.Registry.cs"), registry.ToString());
+        File.WriteAllText(Path.Combine(directory, "LuaTypes.Registry.g.cs"), registry.ToString());
         return files + 2;
     }
 
@@ -511,14 +513,17 @@ sealed class LuaGenerator
     }
 
     private LClass? Base(LClass type) =>
-        !type.IsShape && type.Extends is { } name && _model.Classes.TryGetValue(name, out var found) && found.IsGenerated && found != type ? found : null;
+        type.Extends is { } name && _model.Classes.TryGetValue(name, out var found) && found.IsGenerated && found != type
+        && found.IsShape == type.IsShape
+            ? found
+            : null;
 
     private StringBuilder Header() =>
         new StringBuilder()
             .AppendLine("// <auto-generated>tools/GenerateLuaClasses.cs from vanilla's Lua classes. Don't edit.</auto-generated>")
             .AppendLine($"// Types: pz-lua-stubdata {_commit} (https://github.com/PZ-Umbrella/pz-lua-stubdata), CC BY 4.0.")
             .AppendLine("#nullable enable")
-            .AppendLine("#pragma warning disable CS0108, CS0114")
+            .AppendLine("#pragma warning disable CS0108, CS0114, CS8981")
             .AppendLine();
 
     private void WriteClass(StringBuilder code, LClass type)
@@ -542,10 +547,21 @@ sealed class LuaGenerator
             .AppendLine($"    protected internal {name}(global::Zomboid.Lua.LuaWrap wrap) : base(wrap)")
             .AppendLine("    {")
             .AppendLine("    }");
-        if (!type.IsShape)
+        if (type.IsShape)
         {
             code.AppendLine()
-                .AppendLine("    /// <summary>For C# subclasses: runs the class's <c>new</c> with these arguments.</summary>")
+                .AppendLine("    /// <summary>A new, empty table of this shape, to fill in and hand to Lua.</summary>")
+                .AppendLine($"    public {name}() : this(new global::Zomboid.Lua.LuaWrap(global::Wrench.LuaHost.Required.NewTable()))")
+                .AppendLine("    {")
+                .AppendLine("    }")
+                .AppendLine()
+                .AppendLine("    /// <summary>A new, empty table of this shape, to fill in and hand to Lua.</summary>")
+                .AppendLine($"    public static {(Base(type) is null ? "" : "new ")}{name} New() => new(new global::Zomboid.Lua.LuaWrap(global::Wrench.LuaHost.Required.NewTable()));");
+        }
+        else
+        {
+            code.AppendLine()
+                .AppendLine("    /// <summary>Runs the class's <c>new</c> with these arguments; a C# subclass gets its own Lua class derived from this one.</summary>")
                 .AppendLine($"    protected {name}(global::Zomboid.Lua.LuaNew construct) : base(construct)")
                 .AppendLine("    {")
                 .AppendLine("    }");
@@ -556,7 +572,8 @@ sealed class LuaGenerator
                 if (!constructors.Add(parameters.Types) || parameters.Types is "global::Zomboid.Lua.LuaNew" or "global::Zomboid.Lua.LuaWrap")
                     continue;
                 code.AppendLine()
-                    .AppendLine($"    protected {name}({parameters.Declaration}) : this(new global::Zomboid.Lua.LuaNew({parameters.Arguments}))")
+                    .AppendLine($"    /// <summary>A new <c>{type.Name}</c>, as <c>{type.Name}:new(...)</c>; from a C# subclass, an instance of its derived Lua class.</summary>")
+                    .AppendLine($"    public {name}({parameters.Declaration}) : this(new global::Zomboid.Lua.LuaNew({parameters.Arguments}))")
                     .AppendLine("    {")
                     .AppendLine("    }")
                     .AppendLine()
@@ -602,7 +619,7 @@ sealed class LuaGenerator
         var methodNames = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var method in type.Methods.OrderBy(m => m.Name, StringComparer.Ordinal))
         {
-            var parameters = Parameters(method.Params);
+            var parameters = Parameters(SlotParameters(type, method));
             var csName = MethodName(method.Name, parameters.Types, claimed, methodNames);
             if (csName is null)
                 continue;
@@ -612,7 +629,7 @@ sealed class LuaGenerator
             if (inherited.TryGetValue(signature, out var baseMethod) && baseMethod.Kind == "method")
                 modifier = baseMethod.Type == returns ? "override" : "new virtual";
             else
-                modifier = inherited.ContainsKey(csName) && inherited[csName].Kind != "methodname" ? "new virtual" : "virtual";
+                modifier = baseMethod is not null || Hides(inherited, csName) ? "new virtual" : "virtual";
             own[signature] = new Member("method", signature, returns);
             own.TryAdd(csName, new Member("methodname", "", ""));
             var call = returns == "void"
@@ -643,7 +660,7 @@ sealed class LuaGenerator
             if (csName is null)
                 continue;
             var returns = function.Return is null ? "void" : Map(function.Return).Nullable(function.ReturnNullable);
-            var hides = inherited.ContainsKey(csName) || inherited.ContainsKey($"{csName}({parameters.Types})") ? "new " : "";
+            var hides = inherited.ContainsKey($"{csName}({parameters.Types})") || Hides(inherited, csName) ? "new " : "";
             own[$"{csName}({parameters.Types})"] = new Member("static", "", returns);
             var call = returns == "void"
                 ? $"global::Zomboid.Lua.LuaStatic.{helper}Void(\"{type.Name}\", \"{function.Name}\"{Prefix(parameters.Arguments)})"
@@ -682,10 +699,25 @@ sealed class LuaGenerator
 
     private void WriteGlobals(StringBuilder code)
     {
-        code.AppendLine("/// <summary>Global functions defined by vanilla's Lua (Java's are in <see cref=\"global::Zomboid.Java.Globals\"/>).</summary>")
+        code.AppendLine("/// <summary>Globals defined by vanilla's Lua (Java's are in <see cref=\"global::Zomboid.Java.Globals\"/>).</summary>")
             .AppendLine("public static partial class LuaGlobals")
             .AppendLine("{");
         var claimed = new HashSet<string>(StringComparer.Ordinal) { "LuaGlobals" };
+        foreach (var (global, info) in _model.Globals.OrderBy(g => g.Key, StringComparer.Ordinal))
+        {
+            // An untyped global named after a class is that class's one instance, e.g. SandboxVars.
+            var type = info.Type == "unknown" && _csNames.ContainsKey(global) ? global : info.Type;
+            if (MemberName(global, claimed) is not { } property)
+                continue;
+            var csType = Map(type).Nullable(info.Nullable);
+            code.AppendLine(info.Notes is null ? $"    /// <summary>The Lua global <c>{global}</c>.</summary>" : $"    /// <summary>{Doc(info.Notes, "")}</summary>");
+            code.AppendLine($"    public static {csType} {property}")
+                .AppendLine("    {")
+                .AppendLine($"        get => global::Zomboid.Lua.LuaStatic.GetGlobal<{csType}>(\"{global}\", nullable: {(info.Nullable ? "true" : "false")});")
+                .AppendLine($"        set => global::Zomboid.Lua.LuaStatic.SetGlobal(\"{global}\", value);")
+                .AppendLine("    }")
+                .AppendLine();
+        }
         var names = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var function in _model.Functions.Values.OrderBy(f => f.Name, StringComparer.Ordinal))
         {
@@ -713,6 +745,10 @@ sealed class LuaGenerator
         }
         return all;
     }
+
+    // Methods only hide inherited methods with the same signature, but any property or field with the same name.
+    private static bool Hides(Dictionary<string, Member> inherited, string name) =>
+        inherited.TryGetValue(name, out var member) && member.Kind != "methodname";
 
     private (string Declaration, string Arguments, string Types) Parameters(List<LParam> parameters)
     {
@@ -800,7 +836,9 @@ sealed class LuaGenerator
                         var key = MapUnion(args[0], seenAliases);
                         var keyName = key.IsDynamic || key.Name.EndsWith('?') ? "object" : key.Name;
                         return new CsType($"global::Zomboid.Lua.LuaMap<{keyName}, {Argument(MapUnion(args[1], seenAliases))}>", false);
-                    case "table" or "function" or "userdata" or "thread" or "metatable":
+                    case "function":
+                        return CsType.Object;
+                    case "table" or "userdata" or "thread" or "metatable":
                         return new CsType("global::Wrench.GameObject", false);
                     case "unknown" or "any" or "nil" or "self":
                         return CsType.Dynamic;
@@ -865,9 +903,7 @@ sealed class LuaGenerator
 
     private static string Escape(string name) => Keywords.Contains(name) ? "@" + name : name;
 
-    private static string Pascal(string name) => char.ToUpperInvariant(name[0]) + name[1..];
 
-    private static string Camel(string name) => char.ToLowerInvariant(name[0]) + name[1..];
 
     private static void Summary(StringBuilder code, string? notes)
     {
@@ -878,7 +914,7 @@ sealed class LuaGenerator
     private static string Doc(string? notes, string prefix) =>
         string.IsNullOrWhiteSpace(notes)
             ? ""
-            : prefix + Regex.Replace(notes.Trim(), @"\s+", " ").Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;");
+            : prefix + XmlEscape(Regex.Replace(notes.Trim(), @"\s+", " "));
 }
 
 /// <summary>Stubdata's EmmyLua type strings: <c>A | B</c>, <c>X[]</c>, <c>table&lt;K, V&gt;</c>, <c>fun(...): R</c>, literals.</summary>

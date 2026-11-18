@@ -44,15 +44,23 @@ public readonly struct LuaNew(params object?[] args)
 /// Game objects are only valid for the current call, so a subclass keeps state that must outlive it in table fields
 /// (<see cref="Get{T}"/>, <see cref="Set"/>), the way Lua classes keep theirs on <c>self</c>.
 /// </remarks>
-public abstract class LuaObject : IGameObjectView, IEquatable<LuaObject>
+public abstract class LuaObject : IGameObjectView, IEquatable<LuaObject>, IDisposable
 {
     private GameObject? _table;
 
     protected LuaObject(LuaWrap wrap) => _table = wrap.Table ?? throw new ArgumentNullException(nameof(wrap));
 
-    /// <summary>Creates a C# subclass instance: the Lua base class's <c>new</c> runs with <see cref="LuaNew.Args"/>.</summary>
+    /// <summary>
+    /// Runs the Lua class's <c>new</c> with <see cref="LuaNew.Args"/>. For a generated class that's the vanilla class itself,
+    /// wrapped like any vanilla table; a C# subclass instead becomes an instance of its own Lua class derived from it.
+    /// </summary>
     protected LuaObject(LuaNew construct)
     {
+        if (GetType().Assembly == typeof(LuaObject).Assembly)
+        {
+            _table = LuaStatic.Construct(LuaTypes.LuaName(GetType()), construct.Args ?? []);
+            return;
+        }
         Class = LuaClass.For(GetType());
         _table = Class.Instantiate(this, construct.Args ?? []);
     }
@@ -72,11 +80,17 @@ public abstract class LuaObject : IGameObjectView, IEquatable<LuaObject>
 
     internal LuaClass? Class { get; }
 
-    internal long Id { get; set; }
+    internal long ObjectId { get; set; }
 
     private ModInstance? Mod => Class?.Mod ?? LuaHost.Required.CurrentMod;
 
     /// <summary>The table field <c>self[field]</c>, converted like the typed API's return values.</summary>
+    /// <summary>
+    /// A field the generated class doesn't declare, such as one vanilla code sets ad hoc: the loot window's container
+    /// buttons carry their container as <c>button.inventory</c>. Converted like any Lua value; nil is null or default.
+    /// </summary>
+    public T Field<T>(string name) => Get<T>(name);
+
     protected T Get<T>(string field) => LuaConvert.To<T>(LuaHost.Required.Index(Table, field));
 
     protected void Set(string field, object? value) => LuaHost.Required.SetIndex(Mod, Table, field, value);
@@ -102,9 +116,15 @@ public abstract class LuaObject : IGameObjectView, IEquatable<LuaObject>
     /// <summary>Stops routing Lua calls to this object and releases its table; later calls go to the Lua base class.</summary>
     protected void Release()
     {
-        if (Class is not null)
+        if (Class is not null && !IsReleased)
             LuaClass.Release(this);
     }
+
+    /// <summary>
+    /// For C# subclass instances, <see cref="Release"/>; nothing for wrapped tables. Undo what the object did in Lua
+    /// first (e.g. <c>RemoveFromUIManager()</c>). A Lua reload releases every instance from before it.
+    /// </summary>
+    public void Dispose() => Release();
 
     public bool Equals(LuaObject? other) => other is not null && (ReferenceEquals(this, other) || Table == other.Table);
 

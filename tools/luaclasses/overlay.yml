@@ -1,9 +1,80 @@
 # Corrections and additions merged over pz-lua-stubdata by tools/GenerateLuaClasses.cs. Same format; only classes
-# the data already has are touched. Worth sending upstream where they're data errors rather than Wrench needs.
+# the data already has are touched, except that new umbrella.* table shapes may be added. csName (Wrench's own key)
+# renames a class in C#. Worth sending upstream where they're data errors rather than Wrench needs.
 version: "1.1"
 languages:
   lua:
     classes:
+      # Strings in defines.lua (they double as settings-screen text), but they feed SandboxOptions' doubles;
+      # typed as numbers, reads parse them.
+      ZombiePopulationMultiplier:
+        staticFields:
+          Insane:
+            type: number
+          VeryHigh:
+            type: number
+          High:
+            type: number
+          Normal:
+            type: number
+          Low:
+            type: number
+          None:
+            type: number
+      ZombiePopulationStartMultiplier:
+        staticFields:
+          Insane:
+            type: number
+          VeryHigh:
+            type: number
+          High:
+            type: number
+          Normal:
+            type: number
+          Low:
+            type: number
+          None:
+            type: number
+      ZombiePopulationPeakMultiplier:
+        staticFields:
+          Insane:
+            type: number
+          VeryHigh:
+            type: number
+          High:
+            type: number
+          Normal:
+            type: number
+          Low:
+            type: number
+          None:
+            type: number
+      # The table a challenge registers with addChallenge (client/Challenge/*.lua).
+      umbrella.LastStandChallenge.BaseChallenge:
+        csName: ZomboidBaseChallenge
+        fields:
+          completionText:
+            type: string
+            nullable: true
+          world:
+            type: string
+            notes: The map the challenge plays on, e.g. "Muldraugh, KY".
+          spawns:
+            type: umbrella.LastStandChallenge.Spawn[]
+            nullable: true
+            notes: Where players may start; one is picked at random.
+      umbrella.LastStandChallenge.Challenge:
+        csName: ZomboidChallenge
+      umbrella.LastStandChallenge.Spawn:
+        csName: ZomboidChallengeSpawn
+        notes: Named in Umbrella's style, but the shape itself is Wrench's addition (tools/luaclasses/overlay.yml).
+        fields:
+          x:
+            type: integer
+          y:
+            type: integer
+          z:
+            type: integer
       ISBaseTimedAction:
         fields:
           # Vanilla actions take any character (zombies and animals run some), not only players.

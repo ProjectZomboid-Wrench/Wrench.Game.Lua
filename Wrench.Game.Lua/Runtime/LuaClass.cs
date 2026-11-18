@@ -56,7 +56,7 @@ internal sealed class LuaClass
                     ?? throw new LuaException($"{_baseName}.new returned no table");
         var id = ++_lastId;
         Host.SetIndex(Mod, table, IdField, (double)id);
-        instance.Id = id;
+        instance.ObjectId = id;
         Instances[id] = instance;
         return table.Keep();
     }
@@ -66,8 +66,20 @@ internal sealed class LuaClass
 
     public static void Release(LuaObject instance)
     {
-        Instances.Remove(instance.Id);
+        Instances.Remove(instance.ObjectId);
         instance.DropTable();
+    }
+
+    /// <summary>Releases the instances of every class whose Lua base was replaced by a reload.</summary>
+    public static void ReleaseStale()
+    {
+        foreach (var (type, cached) in Classes.ToList())
+        {
+            if (Host.GetGlobal(cached._baseName) is GameObject current && current == cached._base)
+                continue;
+            cached.Discard();
+            Classes.Remove(type);
+        }
     }
 
     // After a Lua reload the old tables are unreachable from the new state, so their objects are let go.

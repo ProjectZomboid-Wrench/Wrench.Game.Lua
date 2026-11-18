@@ -10,6 +10,8 @@ public sealed class LuaSequence<T> : IReadOnlyList<T>, IGameObjectView
 
     internal LuaSequence(GameObject table) => _table = table;
 
+    public LuaSequence() : this(LuaHost.Required.NewTable()) { }
+
     /// <summary>A new, empty Lua table.</summary>
     public static LuaSequence<T> New() => new(LuaHost.Required.NewTable());
 
@@ -51,6 +53,9 @@ public sealed class LuaMap<TKey, TValue> : IGameObjectView where TKey : notnull
     private readonly GameObject _table;
 
     internal LuaMap(GameObject table) => _table = table;
+
+    /// <summary>A new, empty table.</summary>
+    public LuaMap() : this(LuaHost.Required.NewTable()) { }
 
     /// <summary>A new, empty Lua table.</summary>
     public static LuaMap<TKey, TValue> New() => new(LuaHost.Required.NewTable());

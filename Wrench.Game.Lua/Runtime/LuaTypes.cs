@@ -29,6 +29,11 @@ internal static partial class LuaTypes
             : throw new InvalidCastException($"No Lua wrapper for {type.Name}");
     }
 
+    public static bool IsKnown(string luaName) => ByLuaName.ContainsKey(luaName);
+
+    public static string LuaName(Type type) =>
+        LuaNames.TryGetValue(type, out var name) ? name : throw new InvalidOperationException($"{type.Name} isn't a generated Lua class");
+
     /// <summary>Whether the table's class is <paramref name="type"/>'s Lua class or derives from it.</summary>
     public static bool IsInstance(GameObject table, Type type) =>
         LuaHost.Required.Index(table, "Type") is string name && ByLuaName.TryGetValue(name, out var exact)
