@@ -152,9 +152,6 @@ public abstract class LuaObject : IGameObjectView, IEquatable<LuaObject>, IDispo
     {
         if (Class is null)
             return First(LuaHost.Required.CallMethod(Mod, Table, method, args));
-        var owner = LuaHost.Required.GetGlobal(luaClass) as GameObject ?? throw new LuaException($"Lua class '{luaClass}' isn't loaded");
-        return LuaHost.Required.Index(owner, method) is { } function
-            ? First(LuaHost.Required.Call(Mod, function, [Table, .. args]))
-            : null;
+        return First(LuaStatic.CallStatic(luaClass, method, [Table, .. args], Mod, optional: true));
     }
 }
