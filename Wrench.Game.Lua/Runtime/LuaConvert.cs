@@ -10,7 +10,14 @@ internal static class LuaConvert
 {
     private static readonly ConcurrentDictionary<Type, Func<GameObject, object>> Factories = new();
 
-    public static T To<T>(object? value) => (T)To(value, typeof(T))!;
+    public static T To<T>(object? value)
+    {
+        if (value is T typed)
+            return typed;
+        if (value is double number && JavaConvert.TryNumber(number, out T converted))
+            return converted;
+        return (T)To(value, typeof(T))!;
+    }
 
     public static object? To(object? value, Type type)
     {
