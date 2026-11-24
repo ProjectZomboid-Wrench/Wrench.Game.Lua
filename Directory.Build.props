@@ -2,13 +2,13 @@
 
     <PropertyGroup>
         <WrenchPackages Condition="'$(WrenchPackages)' == ''">$(MSBuildThisFileDirectory)../packages/</WrenchPackages>
-        <Version>0.1.0</Version>
+        <Version>0.1.1</Version>
         <Authors>LambdaSix</Authors>
         <RepositoryUrl>https://github.com/ProjectZomboid-Wrench/Wrench.Game.Lua</RepositoryUrl>
         <PackageOutputPath>$(WrenchPackages)</PackageOutputPath>
         <RestoreAdditionalProjectSources>$(WrenchPackages)</RestoreAdditionalProjectSources>
-        <WrenchApiVersion Condition="'$(WrenchApiVersion)' == ''">0.1.0</WrenchApiVersion>
-        <WrenchGameJavaVersion Condition="'$(WrenchGameJavaVersion)' == ''">0.1.0</WrenchGameJavaVersion>
+        <WrenchApiVersion Condition="'$(WrenchApiVersion)' == ''">0.1.1</WrenchApiVersion>
+        <WrenchGameJavaVersion Condition="'$(WrenchGameJavaVersion)' == ''">0.1.1</WrenchGameJavaVersion>
     </PropertyGroup>
 
 </Project>
